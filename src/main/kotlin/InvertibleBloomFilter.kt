@@ -76,6 +76,6 @@ class InvertibleBloomFilter<E>(private val config: BloomFilterConfiguration<E>) 
 
     fun containsProbably(e: E) =
         map(e, config.numberOfBucketsPerElement, buckets)
-            .map { if (it.number > 0) 1 else 0 }
+            .map { if (it.number != 0) 1 else 0 }
             .sum() == config.numberOfBucketsPerElement
 }
