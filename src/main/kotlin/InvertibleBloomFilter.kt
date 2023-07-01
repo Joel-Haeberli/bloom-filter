@@ -4,7 +4,7 @@ class IBFDecodeException : Exception("Invertible Bloom Filter Decode Exception. 
 
 data class InvertibleBucket(
     var number: Int = 0,
-    var idSum: Int = 0,
+    var idSum: Long = 0,
     var hashSum: Int = 0,
     private val id: UUID = UUID.randomUUID())
 
@@ -17,35 +17,41 @@ data class InvertibleBucket(
  */
 class InvertibleBloomFilter<E>(private val config: BloomFilterConfiguration<E>) {
 
-    private val buckets: Set<InvertibleBucket> = (1..config.numberOfBuckets).map { InvertibleBucket() }.toSet()
+    private var buckets: Set<InvertibleBucket> = (1..config.numberOfBuckets).map { InvertibleBucket() }.toSet()
 
     init {
         config.elements.forEach(this::add)
     }
 
+    fun getBuckets() = buckets
+
     fun add(e: E) =
         map(e, config.numberOfBucketsPerElement, buckets).forEach {
             it.number++
-            it.idSum = it.idSum xor e.hashCode()
-            it.hashSum = it.hashSum xor e.hashCode().hashCode()
+            val idCalc = idCalculation(e)
+            it.idSum = it.idSum xor idCalc
+            it.hashSum = it.hashSum xor idHash(idCalc)
         }
 
     fun remove(e: E) =
         map(e, config.numberOfBucketsPerElement, buckets).forEach {
             it.number--
-            it.idSum = it.idSum xor e.hashCode()
-            it.hashSum = it.hashSum xor e.hashCode().hashCode()
+            val idCalc = idCalculation(e)
+            it.idSum = it.idSum xor idCalc
+            it.hashSum = it.hashSum xor idHash(idCalc)
         }
 
     fun decode(e: E): Int {
 
-        map(e, config.numberOfBucketsPerElement, buckets).forEach {
+        val buckts = map(e, config.numberOfBucketsPerElement, buckets)
+
+        buckts.forEach {
             if (!isPure(it)) {
                 throw IBFDecodeException()
             }
         }
 
-        return e.hashCode()
+        return idHash(buckts.elementAt(0).idSum)
     }
 
     fun diff(ibf: InvertibleBloomFilter<E>) : InvertibleBloomFilter<E> {
@@ -58,12 +64,42 @@ class InvertibleBloomFilter<E>(private val config: BloomFilterConfiguration<E>) 
             throw IllegalArgumentException("IBF must have same number of buckets per element")
         }
 
-        // we don't check the map function here since this is static due to our implementation
+        // we don't check the map function here since
+        // this is static due to our implementation
 
-        // TODO calculate DIFF IBF here
+        val diffConf = BloomFilterConfiguration<E>(setOf(), config.numberOfBuckets, config.numberOfBucketsPerElement)
+        val diffIbf = InvertibleBloomFilter(diffConf)
+        diffIbf.buckets = setOf()
 
-        return InvertibleBloomFilter(config)
+        for (bi in buckets.withIndex()) {
+
+            val thisBucket = this.buckets.elementAt(bi.index)
+            val otherBucket = ibf.buckets.elementAt(bi.index)
+
+            val n = thisBucket.number - otherBucket.number
+            val id = thisBucket.idSum xor otherBucket.idSum
+            val hsh = thisBucket.hashSum xor otherBucket.hashSum
+
+            val diffBucket = InvertibleBucket(n, id, hsh)
+
+            diffIbf.buckets = diffIbf.buckets.plus(diffBucket)
+        }
+
+        return diffIbf
     }
+
+    /**
+     * ID Calculation according to [RFC](https://datatracker.ietf.org/doc/html/draft-summermatter-set-union#section-3.3.1)
+     *
+     * The Spec uses HMAC-SHA256 as hash, but we use KMAC.
+     * In addition, we do not salt the key in this implementation.
+     */
+    private fun idCalculation(e: E) = doHash(longToByteArray(e.hashCode().toLong()), prepareHash())
+
+    /**
+     * HASH Calculation according to [RFC](https://datatracker.ietf.org/doc/html/draft-summermatter-set-union#name-hash-calculation-2)
+     */
+    private fun idHash(id: Long) = crc(id)
 
     private fun isPure(b: InvertibleBucket) : Boolean {
 
