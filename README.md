@@ -13,3 +13,6 @@ Three different level of the Bloom-Filter datastructure are implemented:
 3. Invertible Bloom Filter: Most advanced implementation allowing decoding and set differences
 
 More information on [Wikipedia about Bloom filter](https://en.wikipedia.org/wiki/Bloom_filter)
+
+Be aware that I implemented the structure to get a grasp of how bloom filters work and that I made some simplifications.
+This could lead to inaccuracies regarding the spec or simply lead to bugs ;) 
